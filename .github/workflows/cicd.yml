@@ -5,8 +5,6 @@ on:
     types: [opened]
   pull_request:
     types: [opened, synchronize]
-    branches: [main]
-  # Триггер для исправлений (пока заготовка, реализуем на Шаге 2)
   issue_comment:
     types: [created]
 
@@ -16,8 +14,8 @@ permissions:
   pull-requests: write
 
 jobs:
-  # 1. Агент-Разработчик (Coder)
-  coder-agent:
+  # 1. New Feature (Запуск по Issue)
+  coder-new-feature:
     if: github.event_name == 'issues' && github.event.action == 'opened'
     runs-on: ubuntu-latest
     steps:
@@ -30,20 +28,18 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install langchain-openai langchain langchain-core PyGithub python-dotenv
+        run: pip install langchain-openai langchain langchain-core PyGithub python-dotenv
 
-      - name: Run Coder Agent
+      - name: Run Coder (Create)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          python coder.py --issue ${{ github.event.issue.number }}
+        run: python coder.py --issue ${{ github.event.issue.number }}
 
-  # 2. Агент-Ревьюер (Reviewer)
-  reviewer-agent:
+  # 2. Reviewer (Запуск по PR)
+  reviewer:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -56,14 +52,41 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install langchain-openai langchain langchain-core PyGithub python-dotenv
+        run: pip install langchain-openai langchain langchain-core PyGithub python-dotenv
 
-      - name: Run Reviewer Agent
+      - name: Run Reviewer
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python reviewer.py --pr ${{ github.event.pull_request.number }}
+
+  # 3. Fixer (Запуск по Комментарию с критикой)
+  coder-fixer:
+    # Запускаем, если это комментарий к PR, и в тексте НЕТ "LGTM"
+    if: github.event_name == 'issue_comment' && github.event.issue.pull_request && !contains(github.event.comment.body, 'LGTM')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Нужно скачать всю историю, чтобы переключить ветку
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install langchain-openai langchain langchain-core PyGithub python-dotenv
+
+      - name: Run Coder (Fix)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          python reviewer.py --pr ${{ github.event.pull_request.number }}
+          # При issue_comment номер PR лежит в issue.number
+          python coder.py --pr ${{ github.event.issue.number }} --fix
