@@ -6,7 +6,7 @@ on:
   pull_request:
     types: [opened, synchronize]
     branches: [main]
-  # Триггер для исправлений (пока заготовка)
+  # Триггер для исправлений (пока заготовка, реализуем на Шаге 2)
   issue_comment:
     types: [created]
 
@@ -16,7 +16,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  # 1. Агент-Разработчик (запускается при создании Issue)
+  # 1. Агент-Разработчик (Coder)
   coder-agent:
     if: github.event_name == 'issues' && github.event.action == 'opened'
     runs-on: ubuntu-latest
@@ -27,7 +27,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          [cite_start]python-version: '3.11' # Требование задания [cite: 30]
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
@@ -42,7 +42,7 @@ jobs:
         run: |
           python coder.py --issue ${{ github.event.issue.number }}
 
-  # 2. Агент-Ревьюер (запускается при изменениях в PR)
+  # 2. Агент-Ревьюер (Reviewer)
   reviewer-agent:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
