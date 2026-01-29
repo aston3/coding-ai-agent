@@ -3,7 +3,7 @@ import sys
 import argparse
 import subprocess
 import time
-from github import Github
+from github import Github, Auth
 from langchain_openai import ChatOpenAI  # <-- ИЗМЕНЕНИЕ
 from langchain_core.messages import HumanMessage, SystemMessage
 from dotenv import load_dotenv
@@ -49,7 +49,8 @@ def main(issue_number):
 
     print(f"--- Processing Issue #{issue_number} ---")
     
-    g = Github(GITHUB_TOKEN)
+    auth = Auth.Token(GITHUB_TOKEN)
+    g = Github(auth=auth)
     repo = g.get_repo(REPO_NAME)
     issue = repo.get_issue(number=int(issue_number))
     
@@ -59,7 +60,7 @@ def main(issue_number):
     llm = ChatOpenAI(
         model="tngtech/deepseek-r1t2-chimera:free",
         openai_api_key=API_KEY,
-        openai_api_base="https://openrouter.ai/api/v1",
+        base_url="https://openrouter.ai/api/v1", # <-- base_url
         temperature=0.1
     )
 

@@ -1,7 +1,7 @@
 import os
 import argparse
 import sys
-from github import Github
+from github import Github, Auth
 from langchain_openai import ChatOpenAI # <-- ИЗМЕНЕНИЕ
 from langchain_core.messages import HumanMessage, SystemMessage
 from dotenv import load_dotenv
@@ -19,7 +19,8 @@ def main(pr_number):
 
     print(f"--- Reviewing PR #{pr_number} ---")
     
-    g = Github(GITHUB_TOKEN)
+    auth = Auth.Token(GITHUB_TOKEN)
+    g = Github(auth=auth)
     repo = g.get_repo(REPO_NAME)
     pr = repo.get_pull(int(pr_number))
     
@@ -40,7 +41,7 @@ def main(pr_number):
     llm = ChatOpenAI(
         model="tngtech/deepseek-r1t2-chimera:free",
         openai_api_key=API_KEY,
-        openai_api_base="[https://openrouter.ai/api/v1](https://openrouter.ai/api/v1)",
+        base_url="https://openrouter.ai/api/v1",  # <-- Используем base_url
         temperature=0.2
     )
 
