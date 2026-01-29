@@ -4,7 +4,16 @@ import argparse
 import subprocess
 from github import Github
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
+
+# --- ДОБАВЛЕНО ---
+from dotenv import load_dotenv
+
+# Загружаем переменные из .env (если файл есть)
+# Это нужно для локального запуска на Windows.
+# В GitHub Actions этого файла не будет, но там переменные и так есть в системе.
+load_dotenv() 
+# -----------------
 
 # Настройки
 REPO_NAME = os.getenv("GITHUB_REPOSITORY")  # Автоматически берется в Actions
@@ -56,9 +65,9 @@ def main(issue_number):
     
     print(f"Task: {issue.title}")
     
-    # 2. Инициализируем Gemini Flash
+    # 2. Инициализируем Gemini
     llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
+        model="gemini-2.0-flash",
         google_api_key=API_KEY,
         temperature=0.1
     )
