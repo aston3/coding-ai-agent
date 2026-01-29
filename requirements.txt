@@ -1,4 +1,4 @@
-langchain-google-genai
+langchain-openai
 langchain
 langchain-core
 PyGithub
