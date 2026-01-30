@@ -1,47 +1,74 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func main() {
-    calculator()
+	calculator()
 }
 
 func calculator() {
-    var num1, num2 float64
-    var operator string
-    var continueCalc string
+	var continueCalc string
 
-    for {
-        fmt.Println("Enter first number:")
-        fmt.Scanln(&num1)
+	for {
+		var num1, num2 float64
+		var operator string
 
-        fmt.Println("Enter operator (+, -, *, /):")
-        fmt.Scanln(&operator)
+		fmt.Println("Enter first number:")
+		if _, err := fmt.Scanln(&num1); err != nil {
+			fmt.Println("Invalid number")
+			// Clear input buffer
+			var discard string
+			fmt.Scanln(&discard)
+			continue
+		}
 
-        fmt.Println("Enter second number:")
-        fmt.Scanln(&num2)
+		fmt.Println("Enter operator (+, -, *, /):")
+		if _, err := fmt.Scanln(&operator); err != nil {
+			fmt.Println("Invalid operator")
+			var discard string
+			fmt.Scanln(&discard)
+			continue
+		}
 
-        switch operator {
-        case "+":
-            fmt.Printf("Result: %v\n", num1+num2)
-        case "-":
-            fmt.Printf("Result: %v\n", num1-num2)
-        case "*":
-            fmt.Printf("Result: %v\n", num1*num2)
-        case "/":
-            if num2 == 0 {
-                fmt.Println("Error: Division by zero")
-            } else {
-                fmt.Printf("Result: %v\n", num1/num2)
-            }
-        default:
-            fmt.Println("Invalid operator")
-        }
+		fmt.Println("Enter second number:")
+		if _, err := fmt.Scanln(&num2); err != nil {
+			fmt.Println("Invalid number")
+			var discard string
+			fmt.Scanln(&discard)
+			continue
+		}
 
-        fmt.Println("Do you want to continue? (yes/no)")
-        fmt.Scanln(&continueCalc)
-        if continueCalc != "yes" {
-            break
-        }
-    }
+		switch operator {
+		case "+":
+			fmt.Printf("Result: %v\n", num1+num2)
+		case "-":
+			fmt.Printf("Result: %v\n", num1-num2)
+		case "*":
+			fmt.Printf("Result: %v\n", num1*num2)
+		case "/":
+			if num2 == 0 {
+				fmt.Println("Error: Division by zero")
+				continue // Skip result display
+			}
+			fmt.Printf("Result: %v\n", num1/num2)
+		default:
+			fmt.Println("Invalid operator")
+			continue
+		}
+
+		fmt.Println("Do you want to continue? (yes/no)")
+		if _, err := fmt.Scanln(&continueCalc); err != nil {
+			fmt.Println("Invalid input")
+			var discard string
+			fmt.Scanln(&discard)
+			continue
+		}
+
+		if strings.ToLower(continueCalc) != "yes" {
+			break
+		}
+	}
 }
