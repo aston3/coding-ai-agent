@@ -6,11 +6,11 @@ import datetime
 
 def generate_system_report():
     """Collect system information and return as dictionary"""
-    # Filter sensitive environment variable keys
-    forbidden_substrings = ['SECRET', 'KEY', 'PASSWORD', 'TOKEN', 'CREDENTIAL']
+    # Filter sensitive environment variable keys using case-insensitive check
+    forbidden_substrings = ['secret', 'key', 'password', 'token', 'credential']
     env_keys = [
         key for key in os.environ.keys()
-        if not any(sub in key.upper() for sub in forbidden_substrings)
+        if not any(sub in key.lower() for sub in forbidden_substrings)
     ]
     
     report = {

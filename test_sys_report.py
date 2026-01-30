@@ -2,6 +2,7 @@ import unittest
 import json
 from sys_report import generate_system_report
 import datetime
+import os
 
 class TestSystemReport(unittest.TestCase):
     def test_report_structure(self):
@@ -38,6 +39,27 @@ class TestSystemReport(unittest.TestCase):
         # Verify cwd is non-empty string
         self.assertIsInstance(data['cwd'], str)
         self.assertTrue(len(data['cwd']) > 0)
+
+    def test_sensitive_env_vars_filtered(self):
+        """Test that sensitive environment variables are filtered out"""
+        # Set test environment variables
+        os.environ['TEST_SECRET'] = 'secret_value'
+        os.environ['AWS_ACCESS_KEY'] = 'fake_key'
+        os.environ['SAFE_VAR'] = 'safe_value'
+        
+        report = generate_system_report()
+        
+        # Verify sensitive variables are filtered
+        self.assertNotIn('TEST_SECRET', report['env_vars'])
+        self.assertNotIn('AWS_ACCESS_KEY', report['env_vars'])
+        
+        # Verify safe variable remains
+        self.assertIn('SAFE_VAR', report['env_vars'])
+        
+        # Cleanup
+        del os.environ['TEST_SECRET']
+        del os.environ['AWS_ACCESS_KEY']
+        del os.environ['SAFE_VAR']
 
 if __name__ == '__main__':
     unittest.main()
