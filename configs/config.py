@@ -9,6 +9,9 @@ class Config:
     # GitHub credentials
     GITHUB_TOKEN = os.getenv("GH_PAT") or os.getenv("GITHUB_TOKEN")
     REPO_NAME = os.getenv("GITHUB_REPOSITORY")
+    # Если запускаем локально для тестов, можно раскомментировать и вписать вручную:
+    # if not REPO_NAME:
+    #     REPO_NAME = "your-username/your-repo"
     
     # LLM Settings
     API_KEY = os.getenv("OPENROUTER_API_KEY")

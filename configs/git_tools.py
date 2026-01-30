@@ -1,86 +1,121 @@
-# git_tools.py
 import os
-import subprocess
-from github import Github, Auth
-from configs.config import Config
+from github import Github
 
-def setup_git():
-    subprocess.run(["git", "config", "user.name", Config.GIT_USER], check=False)
-    subprocess.run(["git", "config", "user.email", Config.GIT_EMAIL], check=False)
+# Импортируем настройки из config.py
+# Убедитесь, что в config.py определены GITHUB_TOKEN и REPO_NAME
+try:
+    from configs.config import GITHUB_TOKEN, REPO_NAME
+except ImportError:
+    # Заглушка для локальных тестов без config.py
+    GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+    REPO_NAME = os.getenv("GITHUB_REPOSITORY")
+
+# Списки для фильтрации ненужного контента
+EXCLUDE_DIRS = {
+    '.git', '.github', '.idea', '.vscode', '__pycache__', 
+    'venv', 'env', 'node_modules', 'dist', 'build', 'coverage'
+}
+
+EXCLUDE_EXTENSIONS = {
+    # Изображения и медиа
+    '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.mp4', '.mp3',
+    # Бинарные и системные
+    '.pyc', '.pyo', '.pyd', '.so', '.dll', '.exe', '.bin',
+    # Архивы и документы
+    '.zip', '.tar', '.gz', '.pdf', '.docx', '.xlsx',
+    # Технические файлы
+    '.lock', '.ds_store'
+}
+
+MAX_FILE_SIZE = 30000  # Максимальный размер файла для контекста (символов)
 
 def get_repo():
-    auth = Auth.Token(Config.GITHUB_TOKEN)
-    g = Github(auth=auth)
-    return g.get_repo(Config.REPO_NAME)
+    """Авторизуется и возвращает объект репозитория GitHub."""
+    if not GITHUB_TOKEN or not REPO_NAME:
+        raise ValueError("Не настроены GITHUB_TOKEN или REPO_NAME в configs/config.py")
+    
+    g = Github(GITHUB_TOKEN)
+    return g.get_repo(REPO_NAME)
 
-def checkout_branch(branch_name, create_new=False):
-    try:
-        if create_new:
-            subprocess.run(["git", "checkout", "-b", branch_name], check=True)
-        else:
-            subprocess.run(["git", "fetch", "origin"], check=False)
-            subprocess.run(["git", "checkout", branch_name], check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Git checkout error: {e}")
+def is_text_file(filename):
+    """Проверяет расширение файла на принадлежность к бинарным."""
+    _, ext = os.path.splitext(filename)
+    return ext.lower() not in EXCLUDE_EXTENSIONS
 
-def commit_and_push(branch_name, message):
-    subprocess.run(["git", "add", "."], check=True)
-    status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
-    if status.stdout.strip():
-        subprocess.run(["git", "commit", "-m", message], check=True)
-        subprocess.run(["git", "push", "origin", branch_name], check=True)
-        return True
-    return False
+def should_ignore_dir(dirname):
+    """Проверяет, нужно ли игнорировать папку."""
+    return dirname in EXCLUDE_DIRS
 
-def get_project_files(ext=".py"):
-    """Читает все файлы проекта для контекста"""
-    content = ""
-    for root, _, files in os.walk("."):
-        if ".git" in root: continue
+def get_project_files():
+    """
+    Сканирует текущую директорию и возвращает содержимое всех текстовых файлов проекта.
+    Используется для формирования контекста для LLM.
+    """
+    project_content = ""
+    
+    for root, dirs, files in os.walk("."):
+        # Модифицируем dirs in-place, чтобы os.walk не заходил в игнорируемые папки
+        dirs[:] = [d for d in dirs if not should_ignore_dir(d)]
+        
         for file in files:
-            if file.endswith(ext):
-                path = os.path.join(root, file)
-                with open(path, "r", encoding="utf-8") as f:
-                    content += f"\n--- {path} ---\n{f.read()}\n"
-    return content
+            file_path = os.path.join(root, file)
+            
+            # Пропускаем бинарные расширения
+            if not is_text_file(file):
+                continue
+                
+            # Относительный путь для контекста LLM (clean path)
+            rel_path = os.path.relpath(file_path, ".")
+            
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                    
+                    # Если файл пустой - пропускаем
+                    if not content.strip():
+                        continue
+                        
+                    # Если файл слишком большой - обрезаем
+                    if len(content) > MAX_FILE_SIZE:
+                        content = content[:MAX_FILE_SIZE] + "\n... [TRUNCATED DUE TO SIZE] ..."
+                    
+                    project_content += f"\n<FILE path=\"{rel_path}\">\n{content}\n</FILE>\n"
+                    
+            except UnicodeDecodeError:
+                # Если файл не читается в utf-8, считаем его бинарным и пропускаем
+                print(f"Skipping binary file: {rel_path}")
+            except Exception as e:
+                print(f"Error reading {rel_path}: {e}")
+                
+    return project_content
 
 def get_pr_diff(pr_number):
-    """Получает изменения в файлах из PR"""
+    """
+    Получает diff (изменения) из Pull Request.
+    Используется Reviewer Agent'ом.
+    """
     repo = get_repo()
-    pr = repo.get_pull(pr_number)
+    pr = repo.get_pull(int(pr_number))
     
-    diff_text = f"PR #{pr_number}: {pr.title}\n\n"
+    diff_content = []
     
     # Получаем список измененных файлов
     for file in pr.get_files():
-        # Пропускаем удаленные файлы или конфиги
-        if file.status == "removed" or not file.filename.endswith(".py"):
+        # Игнорируем удаленные файлы
+        if file.status == "removed":
+            diff_content.append(f"File: {file.filename}\nStatus: REMOVED")
             continue
             
-        diff_text += f"FILE: {file.filename} (Status: {file.status})\n"
+        # Игнорируем бинарные файлы в диффе
+        if not is_text_file(file.filename):
+            diff_content.append(f"File: {file.filename}\nStatus: BINARY FILE CHANGED (Diff hidden)")
+            continue
+            
+        # Добавляем патч (сами изменения)
+        # file.patch может быть None, если файл слишком большой или бинарный
         if file.patch:
-            diff_text += f"PATCH:\n{file.patch}\n"
+            diff_content.append(f"File: {file.filename}\nDiff:\n{file.patch}")
         else:
-            diff_text += "Content: (Binary or too large)\n"
-        diff_text += "-" * 30 + "\n"
-        
-    return diff_text
-
-def post_pr_comment(pr_number, body):
-    """Публикует комментарий в PR"""
-    repo = get_repo()
-    pr = repo.get_pull(pr_number)
-    pr.create_issue_comment(body)
-    return pr.html_url
-
-def get_ci_status(pr_number):
-    """(Опционально) Получает статус последних проверок"""
-    repo = get_repo()
-    pr = repo.get_pull(pr_number)
-    # Берем последний коммит
-    last_commit = pr.get_commits().reversed[0]
-    statuses = last_commit.get_statuses()
-    
-    if statuses.totalCount > 0:
-        return f"Latest CI Status: {statuses[0].state} - {statuses[0].description}"
-    return "No CI status found."
+            diff_content.append(f"File: {file.filename}\nDiff: [No patch available]")
+            
+    return "\n\n".join(diff_content)

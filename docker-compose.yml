@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  agent:
+    build: .
+    volumes:
+      - .:/app # Монтируем текущую папку для разработки
+    env_file:
+      - .env   # Создайте файл .env локально с токенами для тестов
+    environment:
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY}

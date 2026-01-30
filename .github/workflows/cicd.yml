@@ -1,22 +1,21 @@
-name: AI SDLC Pipeline
+name: AI Agent SDLC
 
 on:
   issues:
-    types: [opened]
-  pull_request:
-    types: [opened, synchronize]
+    types: [opened, reopened]
   issue_comment:
     types: [created]
+  pull_request:
+    types: [opened, synchronize]
 
 permissions:
   contents: write
-  issues: write
   pull-requests: write
+  issues: write
 
 jobs:
-  # 1. New Feature (Запуск по Issue)
-  coder-new-feature:
-    if: github.event_name == 'issues' && github.event.action == 'opened'
+  ai-developer:
+    if: github.event_name == 'issues' && !contains(github.event.issue.labels.*.name, 'ai-ignore')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -28,23 +27,26 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install langchain-openai langchain langchain-core PyGithub python-dotenv
+        run: pip install -r requirements.txt
 
-      - name: Run Coder (Create)
+      - name: Run Coder Agent (New Feature)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: python coder.py --issue ${{ github.event.issue.number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          # Передаем номер issue через флаг
+          python coder.py --issue "$ISSUE_NUMBER"
 
-  # 2. Reviewer (Запуск по PR)
-  reviewer:
+  ai-reviewer:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Нужно для дифов
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -52,26 +54,24 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install langchain-openai langchain langchain-core PyGithub python-dotenv
+        run: pip install -r requirements.txt
 
-      - name: Run Reviewer
+      - name: Run Reviewer Agent
         env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          GH_PAT: ${{ secrets.GH_PAT }} # Используем PAT для ревью, чтобы триггерить события
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: python reviewer.py --pr ${{ github.event.pull_request.number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          python reviewer.py --pr "$PR_NUMBER"
 
-  # 3. Fixer (Запуск по Комментарию с критикой)
-  coder-fixer:
-    # Запускаем, если это комментарий к PR, и в тексте НЕТ "LGTM"
-    if: github.event_name == 'issue_comment' && github.event.issue.pull_request && !contains(github.event.comment.body, 'LGTM')
+  ai-fixer:
+    # Запускается, если оставлен комментарий в PR (например, "Fix this")
+    if: github.event_name == 'issue_comment' && github.event.issue.pull_request
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0 # Нужно скачать всю историю, чтобы переключить ветку
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -79,14 +79,13 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install langchain-openai langchain langchain-core PyGithub python-dotenv
+        run: pip install -r requirements.txt
 
-      - name: Run Coder (Fix)
+      - name: Run Coder Agent (Fix Mode)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }} # В событии issue_comment номер PR это номер issue
         run: |
-          # При issue_comment номер PR лежит в issue.number
-          python coder.py --pr ${{ github.event.issue.number }} --fix
+          python coder.py --pr "$PR_NUMBER" --fix
