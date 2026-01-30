@@ -14,10 +14,10 @@ class Config:
     #     REPO_NAME = "your-username/your-repo"
     
     # LLM Settings
-    API_KEY = os.getenv("OPENROUTER_API_KEY")
-    BASE_URL = "https://openrouter.ai/api/v1"
+    API_KEY = os.getenv("LLM_API_KEY") or os.getenv("GROQ_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+    BASE_URL = os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
     # Модель вынесена в конфиг, чтобы легко менять при необходимости
-    MODEL_NAME = os.getenv("MODEL_NAME", "tngtech/deepseek-r1t2-chimera:free")
+    MODEL_NAME = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
     TEMPERATURE = 0.1
 
     # Git User (для коммитов в CI)
@@ -27,7 +27,7 @@ class Config:
     @staticmethod
     def validate():
         if not Config.API_KEY:
-            print("Error: OPENROUTER_API_KEY is missing")
+            print("Error: LLM_API_KEY is missing")
             sys.exit(1)
         if not Config.GITHUB_TOKEN:
             print("Error: GITHUB_TOKEN is missing")
