@@ -6,6 +6,7 @@ from github import Github
 try:
     from configs.config import Config
 except ImportError:
+    # Заглушка, если конфиг не загрузился (для локальных тестов)
     GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
     REPO_NAME = os.getenv("GITHUB_REPOSITORY")
     GIT_USER = "AI Agent"
@@ -36,7 +37,7 @@ EXCLUDE_EXTENSIONS = {
 
 MAX_FILE_SIZE = 30000 
 
-# --- GIT OPERATIONS (Restored) ---
+# --- GIT OPERATIONS ---
 
 def setup_git():
     """Настраивает user.name и email для коммитов."""
@@ -55,7 +56,8 @@ def checkout_branch(branch_name, create_new=False):
         subprocess.run(["git", "fetch", "origin"], check=False)
         
         if create_new:
-            # Создаем новую ветку от текущей (обычно main)
+            # Пробуем создать новую ветку
+            # Если ветка уже существует, git checkout -b упадет, поэтому обрабатываем ошибку
             subprocess.run(["git", "checkout", "-b", branch_name], check=True)
             print(f"Created and switched to new branch: {branch_name}")
         else:
@@ -65,21 +67,21 @@ def checkout_branch(branch_name, create_new=False):
             
     except subprocess.CalledProcessError as e:
         print(f"Git checkout error: {e}")
-        # Если не получилось создать, возможно она уже есть, пробуем просто checkout
+        # Фолбэк: Если create_new=True упал (ветка есть), пробуем просто переключиться
         if create_new:
             try:
                 subprocess.run(["git", "checkout", branch_name], check=True)
                 print(f"Switched to existing branch: {branch_name}")
-            except:
-                pass
+            except Exception as ex:
+                print(f"Fallback checkout failed: {ex}")
 
 def commit_and_push(branch_name, message):
     """Добавляет изменения, коммитит и пушит."""
     try:
-        # Добавляем все изменения (включая новые файлы)
+        # Добавляем все изменения
         subprocess.run(["git", "add", "."], check=True)
         
-        # Проверяем статус
+        # Проверяем статус (есть ли что коммитить)
         status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
         
         if not status.stdout.strip():
@@ -90,7 +92,6 @@ def commit_and_push(branch_name, message):
         subprocess.run(["git", "commit", "-m", message], check=True)
         
         # Пуш
-        # Используем токен для авторизации при пуше, если origin настроен через https
         subprocess.run(["git", "push", "origin", branch_name], check=True)
         return True
         
@@ -103,7 +104,7 @@ def commit_and_push(branch_name, message):
 def get_repo():
     """Авторизуется и возвращает объект репозитория GitHub."""
     if not GITHUB_TOKEN or not REPO_NAME:
-        # Пытаемся взять из env напрямую, если конфиг не прогрузился
+        # Пытаемся взять из env напрямую, если конфиг не прогрузился через импорт
         token = os.getenv("GH_PAT") or os.getenv("GITHUB_TOKEN")
         repo = os.getenv("GITHUB_REPOSITORY")
         if not token or not repo:
