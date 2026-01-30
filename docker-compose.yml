@@ -3,6 +3,9 @@ version: '3.8'
 services:
   agent:
     build: .
+    restart: always
+    ports:
+      - "80:80"
     volumes:
       - .:/app # Монтируем текущую папку для разработки
     env_file:
