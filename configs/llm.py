@@ -10,7 +10,7 @@ Your task is to solve the User's Issue based on the provided project context.
 
 1. ANALYZE the project structure and existing file extensions to determine the technology stack (e.g., Python, JavaScript, Go, C++).
 2. ADAPT your coding style, naming conventions, and syntax to match the existing project.
-3. IMPLEMENT the solution.
+3. IMPLEMENT the solution AND write a basic unit test file (e.g., test_solution.py) to verify it.
 
 IMPORTANT: Return the full content of the created or modified files wrapped in XML-like tags:
 <FILE path="path/to/file.ext">

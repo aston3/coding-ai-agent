@@ -47,19 +47,58 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Нужно для вычисления diff в reviewer.py
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      # 1. Сначала ставим зависимости АГЕНТА, чтобы работал линтер (ruff/black часто там есть)
+      - name: Install Agent Dependencies
+        run: pip install -r requirements.txt
+
+      # 2. Запускаем Линтеры (код проверки)
+      - name: Run Linters
+        id: lint
+        continue-on-error: true 
+        run: |
+          # Устанавливаем линтеры, если их нет
+          pip install ruff black
+          
+          echo "Running Ruff..."
+          ruff check . --output-format=github || echo "::warning::Ruff found issues"
+          
+          echo "Running Black..."
+          black --check . || echo "::warning::Black found formatting issues"
+
+      # 3. Запускаем Тесты (код проекта)
+      - name: Run Tests
+        id: tests
+        continue-on-error: true
+        run: |
+          # Если есть зависимости проекта - ставим их
+          if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
+          
+          # Если это Python
+          if ls *.py 1> /dev/null 2>&1; then
+            pip install pytest
+            pytest || echo "::error::Python tests failed"
+          fi
+
+          # Если это Go
+          if [ -f "go.mod" ]; then 
+            go test ./... || echo "::error::Go tests failed"
+          fi
+
+      # 4. ВАЖНО: Восстанавливаем зависимости Агента перед запуском
+      # (на случай, если тесты проекта установили конфликтующие версии библиотек)
+      - name: Restore Agent Environment
         run: pip install -r requirements.txt
 
       - name: Run Reviewer Agent
         env:
-          GH_PAT: ${{ secrets.GH_PAT }} # Важно: используем PAT, чтобы комментарий мог триггерить Fixer
+          GH_PAT: ${{ secrets.GH_PAT }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.number }}
