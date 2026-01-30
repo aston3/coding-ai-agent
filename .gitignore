@@ -3,3 +3,6 @@
 configs/__pycache__/
 *.pyc
 venv/
+server/__pycache__/
+private-key.pem
+
