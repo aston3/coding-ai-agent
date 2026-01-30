@@ -6,6 +6,9 @@ from configs.config import Config
 from configs.llm import invoke_llm, PROMPTS
 from configs.git_tools import setup_git, get_repo, checkout_branch, commit_and_push, get_project_files
 
+import shutil
+import subprocess
+
 def parse_files(text):
     pattern = re.compile(r'<FILE path="([^"\n]+)">\n(.*?)\n</FILE>', re.DOTALL)
     files = []
@@ -45,6 +48,30 @@ def run_coder():
     args = parser.parse_args()
 
     Config.validate()
+
+    # Клонируем репозиторий в папку 'repo'
+    work_dir = "repo"
+    token = os.getenv("GH_PAT")
+    repo_name = os.getenv("GITHUB_REPOSITORY")
+
+    # 1. Очищаем старое, если осталось
+    if os.path.exists(work_dir):
+        print(f"🧹 Removing old work directory: {work_dir}")
+        shutil.rmtree(work_dir)
+
+    # 2. Клонируем
+    print(f"📥 Cloning {repo_name} into '{work_dir}'...")
+    auth_url = f"https://x-access-token:{token}@github.com/{repo_name}.git"
+    try:
+        subprocess.run(["git", "clone", auth_url, work_dir], check=True)
+    except Exception as e:
+        print(f"❌ Clone failed: {e}")
+        return
+
+    # 3. Заходим внутрь папки
+    os.chdir(work_dir)
+    print(f"📂 Working directory changed to: {os.getcwd()}")
+
     setup_git()
     repo = get_repo()
 
