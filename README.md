@@ -42,15 +42,15 @@
    cd coding-ai-agent
    ```
 2. **Настройте окружение: Создайте файл .env:**
-```
+   ```
    GH_PAT=ghp_your_token... (GitHub Personal access token (classic))
    OPENROUTER_API_KEY=sk-or-your_key... (OpenRouter API Key)
    GITHUB_REPOSITORY=username/repo_name
-```
+   ```
 3. **Запуск через Docker Compose:**
-```bash
+   ```bash
    docker-compose up -d --build
-```
+   ```
 4. **Ручной запуск сценариев (через CLI):**
    ```bash
    # Решить задачу из Issue #1
