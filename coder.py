@@ -1,188 +1,87 @@
-import os
-import sys
+# coder.py
 import argparse
-import subprocess
-import time
-from github import Github, Auth
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
-from dotenv import load_dotenv
+import os
+import re
+from configs.config import Config
+from configs.llm import invoke_llm, PROMPTS
+from configs.git_tools import setup_git, get_repo, checkout_branch, commit_and_push, get_project_files
 
-load_dotenv()
-
-REPO_NAME = os.getenv("GITHUB_REPOSITORY")
-GITHUB_TOKEN = os.getenv("GH_PAT") or os.getenv("GITHUB_TOKEN")
-API_KEY = os.getenv("OPENROUTER_API_KEY")
-
-def setup_git_user():
-    subprocess.run(["git", "config", "--global", "user.name", "AI Agent"], check=True)
-    subprocess.run(["git", "config", "--global", "user.email", "agent@ai.com"], check=True)
-
-def parse_llm_response(response_text):
-    import re
-    files = []
+def parse_files(text):
+    """Парсит ответ LLM на файлы"""
     pattern = re.compile(r'<FILE path="(.*?)">\n(.*?)\n</FILE>', re.DOTALL)
-    matches = pattern.findall(response_text)
-    for path, content in matches:
-        files.append({"path": path, "content": content})
-    return files
+    return [{"path": p, "content": c} for p, c in pattern.findall(text)]
 
-def get_pr_files(pr):
-    """Получает содержимое файлов из PR для контекста"""
-    files_context = ""
-    for file in pr.get_files():
-        files_context += f"--- FILE: {file.filename} ---\n"
-        # В реальном проекте лучше скачивать файл, но для текстовых файлов так ок
-        # Или использовать requests.get(file.raw_url)
-        # Здесь мы просто обозначим, что файл есть. Агент должен переписать его целиком.
-    return files_context
-
-def main():
+def run_coder():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--issue", help="Issue number (for new task)")
-    parser.add_argument("--pr", help="PR number (for fixing bugs)")
-    parser.add_argument("--fix", action="store_true", help="Enable fix mode")
+    parser.add_argument("--issue", help="Issue number")
+    parser.add_argument("--pr", help="PR number (fix mode)")
+    parser.add_argument("--fix", action="store_true")
     args = parser.parse_args()
 
-    if not API_KEY:
-        print("Error: OPENROUTER_API_KEY is missing")
-        sys.exit(1)
+    Config.validate()
+    setup_git()
+    repo = get_repo()
 
-    auth = Auth.Token(GITHUB_TOKEN)
-    g = Github(auth=auth)
-    repo = g.get_repo(REPO_NAME)
-    
-    setup_git_user()
-
-    # Инициализация LLM
-    llm = ChatOpenAI(
-        model="tngtech/deepseek-r1t2-chimera:free",
-        openai_api_key=API_KEY,
-        base_url="https://openrouter.ai/api/v1",
-        temperature=0.1
-    )
-
-    # --- РЕЖИМ 1: СОЗДАНИЕ НОВОГО КОДА (из Issue) ---
+    # Сценарий 1: Новая фича (Issue)
     if args.issue and not args.fix:
-        print(f"--- Processing Issue #{args.issue} ---")
-        issue = repo.get_issue(number=int(args.issue))
-        
-        system_prompt = """Ты - Python-разработчик. Напиши код для задачи.
-        ФОРМАТ ОТВЕТА:
-        <FILE path="имя_файла.py">
-        код
-        </FILE>
-        """
-        user_prompt = f"ЗАДАЧА: {issue.title}\nОПИСАНИЕ: {issue.body}"
+        issue = repo.get_issue(int(args.issue))
+        print(f"🚀 Задача: {issue.title}")
         
         branch_name = f"feature/issue-{args.issue}"
-        base_branch = "main"
+        checkout_branch(branch_name, create_new=True) # Пытаемся создать, если нет - упадем в checkout
 
-    # --- РЕЖИМ 2: ИСПРАВЛЕНИЕ ОШИБОК (из PR + комментарии) ---
+        system_prompt = PROMPTS["coder_new"]
+        user_prompt = f"TITLE: {issue.title}\nBODY: {issue.body}"
+
+    # Сценарий 2: Исправление (PR + Review)
     elif args.pr and args.fix:
-        print(f"--- Fixing PR #{args.pr} ---")
         pr = repo.get_pull(int(args.pr))
+        print(f"🔧 Исправление PR #{args.pr}")
         
-        # Получаем последние комментарии (критику ревьюера)
-        comments = list(pr.get_issue_comments())
-        last_comment = comments[-1].body if comments else "No comments"
-        
-        print(f"Last feedback: {last_comment[:100]}...")
-        
-        system_prompt = """Ты - разработчик, исправляющий ошибки.
-        Тебе дан код и критика Ревьюера.
-        Твоя задача: переписать код так, чтобы исправить замечания.
-        Верни ПОЛНОСТЬЮ исправленный файл в тегах <FILE>."""
-        
-        # Получаем текущий код из ветки (через git checkout)
         branch_name = pr.head.ref
-        base_branch = pr.base.ref # обычно main
+        checkout_branch(branch_name) # Переключаемся на ветку PR
         
-        # Переключаемся на ветку PR
-        subprocess.run(["git", "fetch", "origin"], check=True)
-        subprocess.run(["git", "checkout", branch_name], check=True)
+        comments = list(pr.get_issue_comments())
+        last_feedback = comments[-1].body if comments else "Fix logic errors."
         
-        # Читаем файлы, которые есть в ветке сейчас
-        current_files_content = ""
-        for root, _, files in os.walk("."):
-            if ".git" in root: continue
-            for file in files:
-                if file.endswith(".py"):
-                    with open(os.path.join(root, file), "r") as f:
-                        current_files_content += f"\n--- {file} ---\n{f.read()}\n"
-
-        user_prompt = f"""
-        ТЕКУЩИЙ КОД:
-        {current_files_content}
+        current_code = get_project_files() # Читаем текущий код
         
-        КРИТИКА РЕВЬЮЕРА:
-        {last_comment}
-        
-        Исправь код согласно критике.
-        """
-    else:
-        print("Use --issue <num> OR --pr <num> --fix")
-        sys.exit(1)
+        system_prompt = PROMPTS["coder_fix"]
+        user_prompt = f"CODE:\n{current_code}\n\nFEEDBACK:\n{last_feedback}"
 
-    # --- ОБЩАЯ ЧАСТЬ: ГЕНЕРАЦИЯ И КОММИТ ---
-    print("Asking AI...")
-    messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
-    
-    try:
-        response = llm.invoke(messages)
-    except Exception as e:
-        print(f"LLM Error: {e}")
-        sys.exit(1)
+    # Вызов модели
+    print("🤖 Генерация кода...")
+    response = invoke_llm(system_prompt, user_prompt)
+    files = parse_files(response)
 
-    generated_files = parse_llm_response(response.content)
-    
-    if not generated_files:
-        print("No code generated.")
-        sys.exit(1)
+    if not files:
+        print("⚠️ Код не сгенерирован")
+        return
 
-    # Git операции
-    # Если это новый issue, создаем ветку. Если fix - мы уже в ней.
-    if args.issue and not args.fix:
-        try:
-            subprocess.run(["git", "checkout", "-b", branch_name], check=True)
-        except:
-            subprocess.run(["git", "checkout", branch_name], check=True)
+    # Запись файлов
+    for f in files:
+        path = f["path"]
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w", encoding="utf-8") as file:
+            file.write(f["content"])
+        print(f"📝 Записан: {path}")
 
-    for file_data in generated_files:
-        path = file_data["path"]
-        content = file_data["content"]
-        os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(content)
-        print(f"Updated: {path}")
-
-    # Commit & Push
-    try:
-        subprocess.run(["git", "add", "."], check=True)
-        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
-        
-        if status.stdout.strip():
-            msg = f"Fix: {issue.title}" if args.issue else "Fixes based on review"
-            subprocess.run(["git", "commit", "-m", msg], check=True)
-            subprocess.run(["git", "push", "origin", branch_name], check=True)
-            
-            # Если создавали с нуля - делаем PR
-            if args.issue and not args.fix:
-                try:
-                    pr = repo.create_pull(
-                        title=f"Resolve: {issue.title}",
-                        body=f"Generated by AI.\nFixes #{args.issue}",
-                        head=branch_name,
-                        base="main"
-                    )
-                    print(f"PR Created: {pr.html_url}")
-                except:
-                    print("PR already exists.")
-        else:
-            print("No changes to commit.")
-            
-    except Exception as e:
-        print(f"Git error: {e}")
+    # Пуш изменений
+    msg = f"AI Update: {issue.title if args.issue else 'Fixes'}"
+    if commit_and_push(branch_name, msg):
+        print("✅ Изменения отправлены")
+        # Создание PR только если это новая задача
+        if args.issue and not args.fix:
+            try:
+                pr = repo.create_pull(
+                    title=f"Resolve: {issue.title}",
+                    body="Generated by AI Code Agent",
+                    head=branch_name,
+                    base="main"
+                )
+                print(f"🔗 PR создан: {pr.html_url}")
+            except Exception as e:
+                print(f"PR уже существует или ошибка: {e}")
 
 if __name__ == "__main__":
-    main()
+    run_coder()
