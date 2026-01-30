@@ -58,4 +58,7 @@
 
    # Провести ревью PR #2
    docker-compose exec agent python reviewer.py --pr 2
+
+   # Запустить фиксера для PR #2 (исправление ошибок)
+   docker-compose exec agent python coder.py --pr 2 --fix
    ```
