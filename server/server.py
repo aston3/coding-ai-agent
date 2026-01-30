@@ -10,20 +10,25 @@ app = Flask(__name__)
 def run_agent_process(mode, token, repo_name, issue_number):
     """Запускает coder.py или reviewer.py в отдельном потоке"""
     env = os.environ.copy()
-    env["GH_PAT"] = token # Подменяем токен на временный токен App!
+    env["GH_PAT"] = token 
     env["GITHUB_REPOSITORY"] = repo_name
     
-    # Команда запуска (предполагаем, что скрипты в той же папке)
-    cmd = ["python3", "coder.py" if mode == "coder" else "reviewer.py"]
+    # Coder и Fixer обрабатываются скриптом coder.py
+    script_name = "reviewer.py"
+    if mode in ["coder", "fixer"]:
+        script_name = "coder.py"
+        
+    cmd = ["python3", script_name]
+    # -----------------------------------------------
     
     if mode == "coder":
         cmd.extend(["--issue", str(issue_number)])
     elif mode == "reviewer":
-        cmd.extend(["--pr", str(issue_number)]) # В PR номер issue = номер PR
+        cmd.extend(["--pr", str(issue_number)]) 
     elif mode == "fixer":
         cmd.extend(["--pr", str(issue_number), "--fix"])
 
-    print(f"🚀 Запуск агента для {repo_name} #{issue_number}")
+    print(f"🚀 Запуск агента ({mode}) для {repo_name} #{issue_number}")
     subprocess.run(cmd, env=env)
 
 @app.route('/webhook', methods=['POST'])
@@ -59,7 +64,7 @@ def webhook():
 
     # 3. Comment -> Fixer
     if event == 'issue_comment' and data['action'] == 'created':
-        # Если это PR и коммент не содержит LGTM и не от бота
+        # Если это PR и коммент не содержит LGTM
         if 'pull_request' in data['issue'] and "LGTM" not in data['comment']['body']:
              threading.Thread(target=run_agent_process, args=("fixer", token, repo_name, data['issue']['number'])).start()
              return jsonify({"msg": "Fixer started"}), 200
