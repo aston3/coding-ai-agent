@@ -40,12 +40,28 @@ MAX_FILE_SIZE = 30000
 # --- GIT OPERATIONS ---
 
 def setup_git():
-    """Настраивает user.name и email для коммитов."""
+    """Настраивает user.name, email и АВТОРИЗАЦИЮ."""
     try:
+        # 1. Базовые настройки
         subprocess.run(["git", "config", "--global", "user.name", GIT_USER], check=False)
         subprocess.run(["git", "config", "--global", "user.email", GIT_EMAIL], check=False)
-        # Добавляем safe.directory для GitHub Actions
         subprocess.run(["git", "config", "--global", "--add", "safe.directory", "*"], check=False)
+
+        # 2. АВТОРИЗАЦИЯ (Самое важное!)
+        # Получаем токен и имя репо из переменных окружения (их туда положил server.py)
+        token = os.getenv("GH_PAT")
+        repo = os.getenv("GITHUB_REPOSITORY")
+
+        if token and repo:
+            # Формируем URL с токеном: https://x-access-token:TOKEN@github.com/user/repo.git
+            auth_url = f"https://x-access-token:{token}@github.com/{repo}.git"
+            
+            # Обновляем origin, чтобы git push использовал этот URL
+            subprocess.run(["git", "remote", "set-url", "origin", auth_url], check=True)
+            print(f"🔐 Git remote updated with auth token for {repo}")
+        else:
+            print("⚠️ Warning: GH_PAT or GITHUB_REPOSITORY not found in env")
+
     except Exception as e:
         print(f"Git setup warning: {e}")
 
