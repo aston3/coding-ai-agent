@@ -2,3 +2,8 @@ langchain-openai
 langchain-core
 PyGithub
 python-dotenv
+flask
+pyjwt
+cryptography
+requests
+openai
