@@ -148,5 +148,11 @@ def run_coder():
             except Exception as e:
                 print(f"Info: {e}")
 
+os.chdir("..") 
+    print("🧹 Cleaning up workspace...")
+    if os.path.exists(work_dir):
+        shutil.rmtree(work_dir)
+        print("✅ Workspace deleted.")
+
 if __name__ == "__main__":
     run_coder()
