@@ -2,9 +2,9 @@
 import argparse
 import os
 import re
-from config import Config
-from llm import invoke_llm, PROMPTS
-from git_tools import setup_git, get_repo, checkout_branch, commit_and_push, get_project_files
+from configs.config import Config
+from configs.llm import invoke_llm, PROMPTS
+from configs.git_tools import setup_git, get_repo, checkout_branch, commit_and_push, get_project_files
 
 def parse_files(text):
     """Парсит ответ LLM на файлы"""

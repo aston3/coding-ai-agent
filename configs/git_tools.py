@@ -2,11 +2,11 @@
 import os
 import subprocess
 from github import Github, Auth
-from config import Config
+from configs.config import Config
 
 def setup_git():
-    subprocess.run(["git", "config", "--global", "user.name", Config.GIT_USER], check=False)
-    subprocess.run(["git", "config", "--global", "user.email", Config.GIT_EMAIL], check=False)
+    subprocess.run(["git", "config", "user.name", Config.GIT_USER], check=False)
+    subprocess.run(["git", "config", "user.email", Config.GIT_EMAIL], check=False)
 
 def get_repo():
     auth = Auth.Token(Config.GITHUB_TOKEN)

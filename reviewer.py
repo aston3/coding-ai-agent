@@ -1,9 +1,9 @@
 # reviewer.py
 import argparse
 import sys
-from config import Config
-from llm import invoke_llm, PROMPTS
-from git_tools import get_pr_diff, post_pr_comment, get_ci_status
+from configs.config import Config
+from configs.llm import invoke_llm, PROMPTS
+from configs.git_tools import get_pr_diff, post_pr_comment, get_ci_status
 
 def run_reviewer():
     # 1. Парсинг аргументов

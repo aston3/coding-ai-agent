@@ -1,7 +1,7 @@
 # llm.py
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
-from config import Config
+from configs.config import Config
 
 # Промпты вынесены отдельно
 PROMPTS = {
