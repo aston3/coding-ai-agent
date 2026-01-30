@@ -57,8 +57,11 @@ def setup_git():
             auth_url = f"https://x-access-token:{token}@github.com/{repo}.git"
             
             # Обновляем origin, чтобы git push использовал этот URL
-            subprocess.run(["git", "remote", "set-url", "origin", auth_url], check=True)
-            print(f"🔐 Git remote updated with auth token for {repo}")
+            try:
+                subprocess.run(["git", "remote", "set-url", "origin", auth_url], check=True)
+                print("🔐 Git remote updated with auth token")
+            except subprocess.CalledProcessError as e:
+                print(f"Git remote update error: {e}")
         else:
             print("⚠️ Warning: GH_PAT or GITHUB_REPOSITORY not found in env")
 
@@ -74,8 +77,12 @@ def checkout_branch(branch_name, create_new=False):
         if create_new:
             # Пробуем создать новую ветку
             # Если ветка уже существует, git checkout -b упадет, поэтому обрабатываем ошибку
-            subprocess.run(["git", "checkout", "-b", branch_name], check=True)
-            print(f"Created and switched to new branch: {branch_name}")
+            try:
+                subprocess.run(["git", "checkout", "-b", branch_name], check=True)
+                print(f"Created and switched to new branch: {branch_name}")
+            except subprocess.CalledProcessError:
+                print(f"Branch {branch_name} may already exist, trying to switch")
+                subprocess.run(["git", "checkout", branch_name], check=True)
         else:
             # Переключаемся на существующую
             subprocess.run(["git", "checkout", branch_name], check=True)
@@ -83,13 +90,6 @@ def checkout_branch(branch_name, create_new=False):
             
     except subprocess.CalledProcessError as e:
         print(f"Git checkout error: {e}")
-        # Фолбэк: Если create_new=True упал (ветка есть), пробуем просто переключиться
-        if create_new:
-            try:
-                subprocess.run(["git", "checkout", branch_name], check=True)
-                print(f"Switched to existing branch: {branch_name}")
-            except Exception as ex:
-                print(f"Fallback checkout failed: {ex}")
 
 def commit_and_push(branch_name, message):
     """Добавляет изменения, коммитит и пушит."""
