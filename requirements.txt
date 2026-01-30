@@ -5,3 +5,5 @@ python-dotenv
 flask
 pyjwt
 cryptography
+requests
+openai
