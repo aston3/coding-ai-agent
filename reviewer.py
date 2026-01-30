@@ -1,77 +1,65 @@
-import os
+# reviewer.py
 import argparse
 import sys
-from github import Github, Auth
-from langchain_openai import ChatOpenAI # <-- ИЗМЕНЕНИЕ
-from langchain_core.messages import HumanMessage, SystemMessage
-from dotenv import load_dotenv
+from config import Config
+from llm import invoke_llm, PROMPTS
+from git_tools import get_pr_diff, post_pr_comment, get_ci_status
 
-load_dotenv()
+def run_reviewer():
+    # 1. Парсинг аргументов
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--pr", type=int, required=True, help="PR number to review")
+    args = parser.parse_args()
 
-GITHUB_TOKEN = os.getenv("GH_PAT") or os.getenv("GITHUB_TOKEN")
-API_KEY = os.getenv("OPENROUTER_API_KEY")
-REPO_NAME = os.getenv("GITHUB_REPOSITORY")
+    Config.validate()
+    
+    print(f"🕵️  Запуск AI Reviewer для PR #{args.pr}")
 
-def main(pr_number):
-    if not API_KEY or not GITHUB_TOKEN:
-        print("Error: Keys are missing")
+    # 2. Сбор контекста (Diff + CI Status)
+    try:
+        diff_content = get_pr_diff(args.pr)
+        ci_status = get_ci_status(args.pr)
+    except Exception as e:
+        print(f"❌ Ошибка при получении данных PR: {e}")
         sys.exit(1)
 
-    print(f"--- Reviewing PR #{pr_number} ---")
-    
-    auth = Auth.Token(GITHUB_TOKEN)
-    g = Github(auth=auth)
-    repo = g.get_repo(REPO_NAME)
-    pr = repo.get_pull(int(pr_number))
-    
-    print(f"Title: {pr.title}")
-    
-    diff_content = []
-    for file in pr.get_files():
-        if file.patch:
-            diff_content.append(f"File: {file.filename}\nDiff:\n{file.patch}\n")
-    
-    if not diff_content:
-        print("No changes found.")
-        sys.exit(0)
+    print(f"📄 Получены изменения. Анализ {len(diff_content)} символов...")
+    print(f"🚦 {ci_status}")
 
-    full_diff = "\n".join(diff_content)
-    
-    # Настройка OpenRouter
-    llm = ChatOpenAI(
-        model="tngtech/deepseek-r1t2-chimera:free",
-        openai_api_key=API_KEY,
-        base_url="https://openrouter.ai/api/v1",  # <-- Используем base_url
-        temperature=0.2
-    )
+    # 3. Формирование промпта
+    # Мы добавляем diff и статус CI в контекст
+    user_content = f"""
+    CONTEXT:
+    {ci_status}
 
-    system_prompt = """Ты - строгий Code Reviewer.
-    Проверь код на ошибки.
-    1. Если код хороший, напиши ТОЛЬКО: "LGTM".
-    2. Если есть ошибки, напиши список."""
-    
-    user_prompt = f"""
-    PR: {pr.title}
-    ИЗМЕНЕНИЯ:
-    {full_diff}
+    CHANGES TO REVIEW:
+    {diff_content}
     """
 
-    print("Asking DeepSeek Reviewer...")
-    messages = [
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=user_prompt)
-    ]
-    
-    response = llm.invoke(messages)
-    # DeepSeek R1 может выдавать мысли в <think>...</think>. Их лучше вырезать для чистоты,
-    # но для комментария можно оставить или убрать простым replace.
-    review_result = response.content.replace("<think>", "**Thinking:**\n").replace("</think>", "\n\n**Verdict:**")
-    
-    pr.create_issue_comment(f"🤖 **DeepSeek Reviewer Report**\n\n{review_result}")
-    print(f"Comment posted to PR #{pr_number}")
+    # 4. Вызов LLM
+    try:
+        review_result = invoke_llm(PROMPTS["reviewer"], user_content)
+    except Exception as e:
+        print(f"❌ Ошибка LLM: {e}")
+        sys.exit(1)
+
+    print("🤖 Ревью сгенерировано. Отправка в GitHub...")
+
+    # 5. Публикация результата
+    try:
+        url = post_pr_comment(args.pr, review_result)
+        print(f"✅ Комментарий опубликован: {url}")
+        
+        # Логика принятия решения (примерная)
+        if "LGTM" in review_result and "Recommendation" not in review_result:
+            print("🎉 Код одобрен агентом.")
+            sys.exit(0) # Success code
+        else:
+            print("⚠️ Найдены замечания. Требуются исправления.")
+            sys.exit(1) # Error code (чтобы CI мог остановить мердж, если нужно)
+            
+    except Exception as e:
+        print(f"❌ Не удалось опубликовать комментарий: {e}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--pr", required=True, help="PR number")
-    args = parser.parse_args()
-    main(args.pr)
+    run_reviewer()
