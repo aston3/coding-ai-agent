@@ -148,11 +148,21 @@ def run_coder():
             except Exception as e:
                 print(f"Info: {e}")
 
-    os.chdir("..") 
+    try:
+        # Возвращаемся в корень, чтобы можно было удалить папку repo
+        os.chdir("/app") 
+        
         print("🧹 Cleaning up workspace...")
-        if os.path.exists(work_dir):
+        # Удаляем папку repo, если она есть
+        if os.path.exists("repo"):
+            shutil.rmtree("repo")
+            print("✅ Workspace 'repo' deleted.")
+        elif 'work_dir' in locals() and os.path.exists(work_dir):
             shutil.rmtree(work_dir)
-            print("✅ Workspace deleted.")
+            print(f"✅ Workspace '{work_dir}' deleted.")
+            
+    except Exception as e:
+        print(f"⚠️ Cleanup warning: {e}")
 
 if __name__ == "__main__":
     run_coder()
