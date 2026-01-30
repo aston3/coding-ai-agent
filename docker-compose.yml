@@ -12,3 +12,4 @@ services:
       - .env   # Создайте файл .env локально с токенами для тестов
     environment:
       - GITHUB_REPOSITORY=${GITHUB_REPOSITORY}
+      
