@@ -14,6 +14,7 @@ permissions:
   issues: write
 
 jobs:
+  # 1. Разработчик: Создает ветку и PR по Issue
   ai-developer:
     if: github.event_name == 'issues' && !contains(github.event.issue.labels.*.name, 'ai-ignore')
     runs-on: ubuntu-latest
@@ -36,9 +37,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
-          # Передаем номер issue через флаг
           python coder.py --issue "$ISSUE_NUMBER"
 
+  # 2. Ревьюер: Проверяет код при Pull Request
   ai-reviewer:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -46,8 +47,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          token: ${{ secrets.GH_PAT }}
-          fetch-depth: 0 # Нужно для дифов
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -59,20 +59,31 @@ jobs:
 
       - name: Run Reviewer Agent
         env:
-          GH_PAT: ${{ secrets.GH_PAT }} # Используем PAT для ревью, чтобы триггерить события
+          GH_PAT: ${{ secrets.GH_PAT }} # Важно: используем PAT, чтобы комментарий мог триггерить Fixer
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.number }}
         run: |
           python reviewer.py --pr "$PR_NUMBER"
 
+  # 3. Фиксер: Исправляет код, если Ревьюер оставил замечания
   ai-fixer:
-    # Запускается, если оставлен комментарий в PR (например, "Fix this")
-    if: github.event_name == 'issue_comment' && github.event.issue.pull_request
+    # Запускаем, ТОЛЬКО если:
+    # 1. Это комментарий к PR
+    # 2. В комментарии НЕТ фразы "LGTM" (значит, там критика)
+    # 3. Комментарий не от самого Fixer-а (чтобы не реагировать на свой же отчет об остановке)
+    if: >
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      !contains(github.event.comment.body, 'LGTM') &&
+      !contains(github.event.comment.body, '⛔ Превышен лимит')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GH_PAT }} # Для цикла исправлений
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -87,6 +98,6 @@ jobs:
           GH_PAT: ${{ secrets.GH_PAT }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.issue.number }} # В событии issue_comment номер PR это номер issue
+          PR_NUMBER: ${{ github.event.issue.number }}
         run: |
           python coder.py --pr "$PR_NUMBER" --fix
